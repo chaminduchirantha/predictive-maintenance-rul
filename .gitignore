@@ -6,6 +6,7 @@ _test_plan/
 .vscode/
 *.swp
 *.swo
+node_modules/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
