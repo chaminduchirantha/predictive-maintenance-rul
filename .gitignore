@@ -1,6 +1,12 @@
 # Test Plan & Working Notes
 _test_plan/
 
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
