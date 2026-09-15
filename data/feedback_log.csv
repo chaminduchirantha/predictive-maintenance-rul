@@ -1,0 +1,2 @@
+timestamp,machine_id,predicted_status,actual_failure,actual_failure_mode,technician_notes
+2026-09-15T16:04:48.926874Z,CNC-02,Failure Likely,1,Tool Wear Failure (TWF),Cutting tool insert chipped on cycle 225 min.
