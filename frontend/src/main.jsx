@@ -1,8 +1,7 @@
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { predictMachineHealth } from './api'
 import './styles.css'
-
-const API_BASE_URL = 'http://127.0.0.1:8000'
 
 const initialForm = {
   Type: 'M',
@@ -37,29 +36,8 @@ function App() {
     setLoading(true)
     setError(null)
 
-    const payload = {
-      Type: form.Type,
-      Air_temperature_K: parseFloat(form.Air_temperature_K),
-      Process_temperature_K: parseFloat(form.Process_temperature_K),
-      Rotational_speed_rpm: parseFloat(form.Rotational_speed_rpm),
-      Torque_Nm: parseFloat(form.Torque_Nm),
-      Tool_wear_min: parseFloat(form.Tool_wear_min),
-      Machine_ID: form.Machine_ID || 'CNC-MILL-01'
-    }
-
     try {
-      const response = await fetch(`${API_BASE_URL}/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail?.[0]?.msg || 'Inference call failed.')
-      }
-
-      const data = await response.json()
+      const data = await predictMachineHealth(form)
       setResult(data)
     } catch (err) {
       setError(err.message || 'Unable to connect to prediction server.')
