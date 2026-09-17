@@ -92,4 +92,36 @@ export async function triggerModelRetrain() {
   }
 
   return await response.json();
+
+  
+}
+
+// Add these functions to your api.js file
+
+// 5. Get Service Health/Status Endpoint (/health or /status)
+export async function getServiceStatus() {
+  const response = await fetch(`${API_BASE_URL}/`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch service status.');
+  }
+
+  return await response.json();
+}
+
+// 6. Get Model Metrics & Feature Importances Endpoint (/metrics)
+export async function getModelMetrics() {
+  const response = await fetch(`${API_BASE_URL}/metrics`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch model metrics.');
+  }
+
+  return await response.json();
 }
