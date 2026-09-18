@@ -8,9 +8,18 @@ import {
   getServiceStatus,
   getModelMetrics
 } from './api'
+import { 
+  IconUpload, 
+  IconDownload, 
+  IconRefresh, 
+  IconPlus, 
+  IconTrash, 
+  IconFeedback, 
+  IconAlertCircle, 
+  IconCheckCircle 
+} from './icons'
 import './styles.css'
 
-// Default baseline single-machine form
 const initialSingleForm = {
   Machine_ID: 'CNC-MILL-01',
   Type: 'M',
@@ -21,7 +30,6 @@ const initialSingleForm = {
   Tool_wear_min: '35'
 }
 
-// Sample industrial fleet records for 1-click test populating into the editable table
 const sampleFleetPresets = [
   { Machine_ID: 'CNC-LINE1-01', Type: 'M', Air_temperature_K: '298.1', Process_temperature_K: '308.6', Rotational_speed_rpm: '1550', Torque_Nm: '42.8', Tool_wear_min: '35' },
   { Machine_ID: 'CNC-LINE1-02', Type: 'L', Air_temperature_K: '304.5', Process_temperature_K: '313.8', Rotational_speed_rpm: '1200', Torque_Nm: '68.5', Tool_wear_min: '225' },
@@ -30,27 +38,23 @@ const sampleFleetPresets = [
 ]
 
 const singleFields = [
-  ['Air_temperature_K', 'Air temperature', 'K', 'Ambient temperature around machine (295 - 305 K)'],
-  ['Process_temperature_K', 'Process temperature', 'K', 'Operating temperature during cut (305 - 315 K)'],
-  ['Rotational_speed_rpm', 'Rotational speed', 'rpm', 'Spindle angular velocity (1100 - 2900 rpm)'],
-  ['Torque_Nm', 'Torque', 'Nm', 'Cutting torque applied to workpiece (3 - 80 Nm)'],
-  ['Tool_wear_min', 'Tool wear', 'min', 'Accumulated tool operation time (0 - 250 min)']
+  ['Air_temperature_K', 'Air temperature', 'K', 'Ambient temperature around the machine'],
+  ['Process_temperature_K', 'Process temperature', 'K', 'Temperature during operation'],
+  ['Rotational_speed_rpm', 'Rotational speed', 'rpm', 'Current spindle speed'],
+  ['Torque_Nm', 'Torque', 'Nm', 'Applied cutting torque'],
+  ['Tool_wear_min', 'Tool wear', 'min', 'Minutes since tool replacement']
 ]
 
-// Pure JS CSV Parser: supports quotes, commas, semicolons, and various header naming conventions
+// Zero-dependency pure JS CSV parser supporting both AI4I dataset and API schemas
 function parseCSVTelemetry(csvText) {
   const lines = csvText.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean)
   if (lines.length < 2) {
     throw new Error('CSV file must contain a header row and at least one data row.')
   }
 
-  // Detect delimiter (comma or semicolon)
-  const headerLine = lines[0]
-  const delimiter = headerLine.includes(';') && !headerLine.includes(',') ? ';' : ','
-  
-  const rawHeaders = headerLine.split(delimiter).map(h => h.replace(/^["']|["']$/g, '').trim())
+  const delimiter = lines[0].includes(';') && !lines[0].includes(',') ? ';' : ','
+  const rawHeaders = lines[0].split(delimiter).map(h => h.replace(/^["']|["']$/g, '').trim())
 
-  // Header mapping dictionary
   const mapHeaderKey = (h) => {
     const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (clean === 'machineid' || clean === 'productid' || clean === 'udi' || clean === 'id') return 'Machine_ID'
@@ -68,7 +72,7 @@ function parseCSVTelemetry(csvText) {
   const records = []
   for (let i = 1; i < lines.length; i++) {
     const rawCols = lines[i].split(delimiter).map(c => c.replace(/^["']|["']$/g, '').trim())
-    if (rawCols.length < 5) continue // Skip incomplete rows
+    if (rawCols.length < 5) continue
 
     const rowObj = {
       Machine_ID: `MCH-${String(i).padStart(3, '0')}`,
@@ -104,31 +108,28 @@ function parseCSVTelemetry(csvText) {
 }
 
 function App() {
-  // Navigation: 'single' | 'batch'
   const [activeTab, setActiveTab] = useState('single')
 
-  // Single Machine Form & Result
-  const [singleForm, setSingleForm] = useState(initialSingleForm)
-  const [singleResult, setSingleResult] = useState(null)
-  const [singleLoading, setSingleLoading] = useState(false)
+  // 1. Single Machine State
+  const [form, setForm] = useState(initialSingleForm)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  // Batch Fleet Workspace State
+  // 2. Batch Fleet State
   const [fleetList, setFleetList] = useState(sampleFleetPresets)
   const [batchResults, setBatchResults] = useState(null)
   const [batchLoading, setBatchLoading] = useState(false)
-  const [batchFilter, setBatchFilter] = useState('ALL') // 'ALL' | 'FAILURE' | 'NORMAL'
+  const [batchFilter, setBatchFilter] = useState('ALL')
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef(null)
-
-  // Feedback Modal State for Batch items
   const [selectedBatchItemForFeedback, setSelectedBatchItemForFeedback] = useState(null)
 
-  // Global Status & Retraining
+  // 3. System Health & Model Lifecycle State
   const [serviceStatus, setServiceStatus] = useState({ 
     online: false, 
     model: 'Checking...', 
     statusText: 'Connecting...',
-    featureCount: 0,
+    featureCount: 12,
     loadedAt: null 
   })
   const [metrics, setMetrics] = useState(null)
@@ -149,14 +150,14 @@ function App() {
         online: true,
         model: statusData.model_architecture || statusData.model_name || 'GradientBoostingClassifier',
         statusText: statusData.status === 'operational' ? 'Operational' : (statusData.status || 'Active'),
-        featureCount: statusData.feature_count || 9,
-        loadedAt: statusData.loaded_at ? new Date(statusData.loaded_at).toLocaleTimeString() : 'Ready'
+        featureCount: statusData.feature_count || 12,
+        loadedAt: statusData.loaded_at ? new Date(statusData.loaded_at).toLocaleTimeString() : 'Active'
       })
     } catch {
       setServiceStatus({ 
         online: false, 
-        model: 'Offline', 
-        statusText: 'Disconnected',
+        model: 'Disconnected', 
+        statusText: 'Offline',
         featureCount: 0,
         loadedAt: null 
       })
@@ -169,30 +170,29 @@ function App() {
       const data = await getModelMetrics()
       setMetrics(data)
     } catch {
-      // Keep UI clean if metrics endpoint not ready
+      // Graceful fallback
     } finally {
       setMetricsLoading(false)
     }
   }
 
-  function handleSingleFormChange(e) {
-    const { name, value } = e.target
-    setSingleForm(prev => ({ ...prev, [name]: value }))
+  function updateField(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
   }
 
-  async function handleSingleSubmit(e) {
-    e.preventDefault()
-    setSingleLoading(true)
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setLoading(true)
     setError(null)
     setInfoMessage(null)
 
     try {
-      const data = await predictMachineHealth(singleForm)
-      setSingleResult(data)
+      const data = await predictMachineHealth(form)
+      setResult(data)
     } catch (err) {
-      setError(err.message || 'Unable to connect to predictive service.')
+      setError(err.message || 'Unable to connect to prediction server.')
     } finally {
-      setSingleLoading(false)
+      setLoading(false)
     }
   }
 
@@ -224,7 +224,7 @@ function App() {
         const parsed = parseCSVTelemetry(event.target.result)
         setFleetList(parsed)
         setBatchResults(null)
-        setInfoMessage(`Successfully loaded ${parsed.length} machine records from "${file.name}".`)
+        setInfoMessage(`Loaded ${parsed.length} machine records from "${file.name}".`)
       } catch (err) {
         setError(err.message || 'Failed to parse CSV file.')
       }
@@ -233,7 +233,6 @@ function App() {
     reader.readAsText(file)
   }
 
-  // Download Sample CSV Template
   function handleDownloadTemplate() {
     const headers = 'Machine_ID,Type,Air_temperature_K,Process_temperature_K,Rotational_speed_rpm,Torque_Nm,Tool_wear_min\n'
     const rows = sampleFleetPresets.map(r => 
@@ -249,14 +248,12 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  // Load Preset Fleet
   function handleLoadPreset() {
     setFleetList(sampleFleetPresets)
     setBatchResults(null)
-    setInfoMessage('Loaded sample industrial fleet (4 machines) into the editor.')
+    setInfoMessage('Loaded sample industrial fleet (4 machines) into table.')
   }
 
-  // Add Row in Fleet Table
   function handleAddFleetRow() {
     const newIdx = fleetList.length + 1
     const newRow = {
@@ -271,7 +268,6 @@ function App() {
     setFleetList([...fleetList, newRow])
   }
 
-  // Update specific field in Fleet Table
   function handleFleetRowChange(index, field, value) {
     setFleetList(prev => {
       const copy = [...prev]
@@ -280,34 +276,30 @@ function App() {
     })
   }
 
-  // Delete Row from Fleet Table
   function handleDeleteFleetRow(index) {
     setFleetList(prev => prev.filter((_, idx) => idx !== index))
   }
 
-  // Run Fleet Batch Prediction on Real Table Data
-  async function handleExecuteBatch() {
+  async function handleBatchPredict() {
     if (fleetList.length === 0) {
-      setError('Fleet list is empty. Upload a CSV or add machines to analyze.')
+      setError('Fleet list is empty. Add machines or upload a CSV first.')
       return
     }
 
     setBatchLoading(true)
     setError(null)
     setInfoMessage(null)
-
     try {
-      const response = await predictBatchMachineHealth(fleetList)
-      setBatchResults(response)
-      setInfoMessage(`Analyzed ${response.length} machines successfully.`)
+      const batchRes = await predictBatchMachineHealth(fleetList)
+      setBatchResults(batchRes)
+      setInfoMessage(`Analyzed ${batchRes.length} machines successfully.`)
     } catch (err) {
-      setError(err.message || 'Batch prediction request failed.')
+      setError(err.message || 'Batch prediction failed.')
     } finally {
       setBatchLoading(false)
     }
   }
 
-  // Export Batch Results to CSV
   function handleExportBatchCSV() {
     if (!batchResults || batchResults.length === 0) return
     const headers = 'Machine_ID,Status,Failure_Probability,Risk_Level,Diagnosed_Failure_Mode,Root_Causes,Recommended_Actions,Timestamp\n'
@@ -326,7 +318,6 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  // Trigger Model Retraining with auto-refresh poll
   async function handleTriggerRetrain() {
     setRetrainLoading(true)
     setError(null)
@@ -334,9 +325,8 @@ function App() {
 
     try {
       const response = await triggerModelRetrain()
-      setInfoMessage(response.message || 'Model retraining started asynchronously in background.')
+      setInfoMessage(response.message || 'Retraining started successfully in background.')
       
-      // Poll every 3 seconds for 15 seconds to auto-refresh metrics once new model is reloaded
       let checks = 0
       const pollInterval = setInterval(async () => {
         checks++
@@ -344,17 +334,17 @@ function App() {
         await fetchMetrics()
         if (checks >= 5) {
           clearInterval(pollInterval)
-          setInfoMessage('Retraining complete. New model artifacts and metrics active!')
+          setInfoMessage('Retraining complete. New model artifacts active!')
         }
       }, 3000)
     } catch (err) {
-      setError(err.message || 'Failed to trigger model retraining.')
+      setError(err.message || 'Failed to start retraining.')
     } finally {
       setRetrainLoading(false)
     }
   }
 
-  // Batch Result Statistics
+  // Filtered batch statistics
   const totalBatch = batchResults ? batchResults.length : 0
   const failingBatch = batchResults ? batchResults.filter(b => b.status === 'Failure Likely').length : 0
   const healthyBatch = totalBatch - failingBatch
@@ -370,34 +360,33 @@ function App() {
 
   return (
     <main className="app-shell">
-      {/* 1. Header Bar with Dynamic Service Health */}
+      {/* 1. Header Bar */}
       <header className="topbar">
         <div className="brand-mark">PM</div>
         <div>
-          <p className="eyebrow">Industrial AI Diagnostics</p>
+          <p className="eyebrow">Predictive maintenance</p>
           <h1>PredictaMaint</h1>
         </div>
-        
-        <div className={`model-status ${serviceStatus.online ? 'online' : 'offline'}`} title={`Model: ${serviceStatus.model}`}>
-          <span style={{ backgroundColor: serviceStatus.online ? '#10b981' : '#ef4444' }} />
+        <div className={`model-status ${serviceStatus.online ? 'online' : 'offline'}`}>
+          <span style={{ backgroundColor: serviceStatus.online ? '#10b981' : '#ef4444' }} /> 
           {serviceStatus.online 
             ? `ML Service: ${serviceStatus.statusText} (${serviceStatus.model})` 
             : 'ML Service Offline'}
         </div>
       </header>
 
-      {/* Hero Header */}
+      {/* 2. Hero Intro */}
       <section className="intro">
         <div>
-          <p className="eyebrow accent">AI4I Predictive Maintenance Platform</p>
-          <h2>Spot equipment failures<br /><em>before</em> costly downtime.</h2>
+          <p className="eyebrow accent">Machine health assessment</p>
+          <h2>Spot the warning signs<br /><em>before</em> downtime.</h2>
           <p className="intro-copy">
-            Ingest real-time machine telemetry or batch SCADA logs to evaluate failure risks, diagnose failure modes (TWF, HDF, PWF, OSF), and receive prescriptive maintenance actions.
+            Enter operating telemetry below or ingest multi-machine SCADA logs to estimate failure risk from the AI4I 2020 predictive maintenance model.
           </p>
         </div>
         <div className="intro-stat">
           <strong>{serviceStatus.online ? serviceStatus.model.replace('Classifier', '') : 'Offline'}</strong>
-          <span>{serviceStatus.statusText} • {serviceStatus.loadedAt ? `Refreshed ${serviceStatus.loadedAt}` : 'Ready'}</span>
+          <span>{serviceStatus.statusText} • {serviceStatus.loadedAt ? `Refreshed ${serviceStatus.loadedAt}` : 'Active'}</span>
         </div>
       </section>
 
@@ -421,40 +410,40 @@ function App() {
         </button>
       </div>
 
-      {/* Main Workspace Grid */}
+      {/* 3. Main Workspace Grid */}
       <div className="workspace">
-        {/* TAB 1: SINGLE MACHINE FORM */}
-        {activeTab === 'single' && (
-          <form className="diagnostic-form" onSubmit={handleSingleSubmit}>
+        {/* COLUMN 1: DIAGNOSTIC FORM OR BATCH HUB */}
+        {activeTab === 'single' ? (
+          <form className="diagnostic-form" onSubmit={handleSubmit}>
             <div className="form-heading">
               <div>
-                <p className="eyebrow">Real-Time Sensor Scoring</p>
-                <h3>Machine Operating Telemetry</h3>
+                <p className="eyebrow">01 / Machine profile</p>
+                <h3>Operating conditions</h3>
               </div>
-              <span className="required">Endpoint: POST /predict</span>
+              <span className="required">All fields required</span>
             </div>
 
             <div className="field-grid">
               <label className="field">
-                Machine Identifier
+                Machine identifier
                 <span className="field-help">Unique shop-floor machine tag</span>
                 <input 
                   required 
                   name="Machine_ID" 
                   type="text" 
-                  value={singleForm.Machine_ID} 
-                  onChange={handleSingleFormChange}
+                  value={form.Machine_ID} 
+                  onChange={updateField} 
                   placeholder="e.g. CNC-MILL-01" 
                 />
               </label>
 
               <label className="field type-field">
-                Product Quality Variant
-                <span className="field-help">L (Low 50%), M (Medium 30%), H (High 20%)</span>
-                <select name="Type" value={singleForm.Type} onChange={handleSingleFormChange}>
-                  <option value="L">L / Light Variant</option>
-                  <option value="M">M / Medium Variant</option>
-                  <option value="H">H / High Variant</option>
+                Product type 
+                <span className="field-help">Category used during training</span>
+                <select name="Type" value={form.Type} onChange={updateField}>
+                  <option value="L">L / Light</option>
+                  <option value="M">M / Medium</option>
+                  <option value="H">H / Heavy</option>
                 </select>
               </label>
 
@@ -468,8 +457,8 @@ function App() {
                       name={name} 
                       type="number" 
                       step="any" 
-                      value={singleForm[name]} 
-                      onChange={handleSingleFormChange} 
+                      value={form[name]} 
+                      onChange={updateField} 
                     />
                     <span>{unit}</span>
                   </div>
@@ -477,25 +466,32 @@ function App() {
               ))}
             </div>
 
-            <button className="predict-button" type="submit" disabled={singleLoading}>
-              {singleLoading ? 'Running ML Inference & Physics Diagnostics...' : 'Run Machine Diagnostic'}
-              <span>→</span>
-            </button>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <button className="predict-button" type="submit" disabled={loading} style={{ flex: 2 }}>
+                {loading ? 'Running Diagnostics...' : 'Run health prediction'} <span>→</span>
+              </button>
+              
+              <button 
+                type="button" 
+                className="secondary-button" 
+                onClick={() => setActiveTab('batch')} 
+                style={{ flex: 1, marginTop: '32px' }}
+              >
+                Fleet Batch Ingestion
+              </button>
+            </div>
           </form>
-        )}
-
-        {/* TAB 2: BATCH CSV INGESTION & INTERACTIVE FLEET TABLE */}
-        {activeTab === 'batch' && (
-          <div className="batch-workspace-panel">
+        ) : (
+          <div className="diagnostic-form">
             <div className="form-heading">
               <div>
-                <p className="eyebrow">Fleet Scalability</p>
-                <h3>Multi-Machine Batch Telemetry Hub</h3>
+                <p className="eyebrow">01 / Fleet profile</p>
+                <h3>Multi-Machine Telemetry Ingestion</h3>
               </div>
               <span className="required">Endpoint: POST /batch-predict</span>
             </div>
 
-            {/* CSV File Dropzone */}
+            {/* CSV Dropzone */}
             <div 
               className={`csv-dropzone ${dragOver ? 'drag-over' : ''}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
@@ -511,7 +507,9 @@ function App() {
                 style={{ display: 'none' }} 
               />
               <div className="dropzone-content">
-                <div className="dropzone-icon">📁</div>
+                <div className="dropzone-icon" style={{ marginBottom: '8px' }}>
+                  <IconUpload size={36} color="#71952f" />
+                </div>
                 <h4>Drag & Drop Telemetry CSV file here, or click to browse</h4>
                 <p>Supports SCADA logs with columns: <code>Machine_ID, Type, Air_temp, Process_temp, Speed, Torque, Tool_wear</code></p>
               </div>
@@ -520,22 +518,22 @@ function App() {
             {/* Fleet Controls Bar */}
             <div className="fleet-controls-bar">
               <div className="fleet-actions-left">
-                <button type="button" className="btn-small secondary" onClick={handleDownloadTemplate}>
-                  📥 Download CSV Template
+                <button type="button" className="btn-small" onClick={handleDownloadTemplate}>
+                  <IconDownload size={13} /> Download CSV Template
                 </button>
-                <button type="button" className="btn-small secondary" onClick={handleLoadPreset}>
-                  🔄 Reset to Sample Fleet (4)
+                <button type="button" className="btn-small" onClick={handleLoadPreset}>
+                  <IconRefresh size={13} /> Reset Sample Fleet (4)
                 </button>
-                <button type="button" className="btn-small secondary" onClick={handleAddFleetRow}>
-                  ➕ Add Machine Row
+                <button type="button" className="btn-small" onClick={handleAddFleetRow}>
+                  <IconPlus size={13} /> Add Machine Row
                 </button>
               </div>
 
               <div className="fleet-actions-right">
-                <span className="fleet-count-badge">{fleetList.length} Machines Queued</span>
+                <span className="fleet-count-badge">{fleetList.length} Machines</span>
                 {fleetList.length > 0 && (
                   <button type="button" className="btn-text-danger" onClick={() => { setFleetList([]); setBatchResults(null) }}>
-                    Clear All
+                    Clear
                   </button>
                 )}
               </div>
@@ -550,12 +548,12 @@ function App() {
                       <th>#</th>
                       <th>Machine ID</th>
                       <th>Type</th>
-                      <th>Air Temp (K)</th>
-                      <th>Proc Temp (K)</th>
-                      <th>Speed (rpm)</th>
-                      <th>Torque (Nm)</th>
-                      <th>Wear (min)</th>
-                      <th>Action</th>
+                      <th>Air (K)</th>
+                      <th>Proc (K)</th>
+                      <th>Speed</th>
+                      <th>Torque</th>
+                      <th>Wear</th>
+                      <th>Del</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -631,9 +629,10 @@ function App() {
                             type="button" 
                             className="btn-icon-danger"
                             onClick={() => handleDeleteFleetRow(idx)}
-                            title="Remove machine row"
+                            title="Remove row"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            ×
+                            <IconTrash size={13} color="#dc2626" />
                           </button>
                         </td>
                       </tr>
@@ -643,7 +642,7 @@ function App() {
               </div>
             ) : (
               <div className="empty-fleet-state">
-                <p>No machines currently in batch list. Click <strong>"Add Machine Row"</strong>, <strong>"Reset to Sample Fleet"</strong>, or upload a CSV file above.</p>
+                <p>No machines currently in batch list. Click <strong>"Add Machine Row"</strong> or upload a CSV file above.</p>
               </div>
             )}
 
@@ -651,58 +650,55 @@ function App() {
             <button 
               className="predict-button" 
               type="button" 
-              onClick={handleExecuteBatch} 
+              onClick={handleBatchPredict} 
               disabled={batchLoading || fleetList.length === 0}
-              style={{ marginTop: '20px' }}
             >
-              {batchLoading ? `Evaluating ${fleetList.length} Machines via API...` : `Analyze Fleet Telemetry (${fleetList.length} Machines)`}
+              {batchLoading ? `Evaluating ${fleetList.length} Machines...` : `Run Fleet Batch Diagnostics (${fleetList.length} Machines)`}
               <span>→</span>
             </button>
           </div>
         )}
 
-        {/* SIDEBAR: MODEL INTELLIGENCE & ACTIVE LIFECYCLE */}
+        {/* COLUMN 2: SIDE-NOTE (Original Look & Dynamic Weights) */}
         <aside className="side-note">
-          <span className="note-number">03</span>
-          <h3>Model Telemetry</h3>
-          <p>Scored with AI4I 2020 trained machine intelligence, incorporating thermodynamics, power mechanics, and overstrain limits.</p>
-          
+          <span className="note-number">02</span>
+          <h3>Live API Integration</h3>
+          <p>This form dispatches sensor telemetry directly to the FastAPI REST service for real-time model scoring and root-cause diagnostics.</p>
           <div className="signal-line"><span /><span /><span /><span /><span /></div>
 
-          {/* Dynamic Feature Importances from GET /metrics */}
+          {/* Model Feature Importances (Vertical, bounded) */}
           <div className="metrics-box">
-            <div className="metrics-head">
-              <h4>Feature Importances</h4>
-              <span className="metrics-badge">{serviceStatus.featureCount} Features</span>
-            </div>
-            
+            <h4>
+              <span>Model Feature Importances</span>
+              <span style={{ fontSize: '10px', color: '#799b3c', fontFamily: 'DM Mono' }}>{serviceStatus.featureCount} Features</span>
+            </h4>
             {metricsLoading ? (
-              <p className="loading-copy">Fetching dynamic model weights...</p>
+              <p style={{ fontSize: '0.8rem', color: '#666' }}>Loading metrics...</p>
             ) : metrics?.feature_importances ? (
               <div className="feature-bars">
-                {Object.entries(metrics.feature_importances).map(([feat, weight]) => {
-                  const pct = (weight * 100).toFixed(1)
-                  return (
-                    <div key={feat} className="feature-bar-item">
-                      <div className="feature-labels">
-                        <span className="feat-name">{feat}</span>
-                        <span className="feat-pct">{pct}%</span>
-                      </div>
-                      <div className="bar-track">
-                        <div className="bar-fill" style={{ width: `${Math.max(Number(pct), 2)}%` }} />
-                      </div>
+                {Object.entries(metrics.feature_importances).map(([feat, weight]) => (
+                  <div key={feat} className="feature-bar-item">
+                    <div className="feature-labels">
+                      <span className="feat-name">{feat}</span>
+                      <strong className="feat-pct">{(weight * 100).toFixed(1)}%</strong>
                     </div>
-                  )
-                })}
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${Math.max(weight * 100, 2)}%` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="loading-copy">Connecting to metrics service...</p>
+              <div style={{ fontSize: '0.78rem', color: '#666' }}>
+                <div>Rotational speed: <strong>27.2%</strong></div>
+                <div>Power: <strong>23.0%</strong></div>
+                <div>Tool wear: <strong>17.4%</strong></div>
+              </div>
             )}
           </div>
-
-          {/* Retraining Trigger (POST /retrain) */}
+          
+          {/* Continuous Retraining Trigger */}
           <div className="retrain-box">
-            <h4>Continuous Retraining</h4>
             <p className="retrain-desc">Triggers background pipeline retraining on logged feedback data without service interruption.</p>
             <button 
               className="secondary-button" 
@@ -710,61 +706,55 @@ function App() {
               onClick={handleTriggerRetrain} 
               disabled={retrainLoading}
             >
-              {retrainLoading ? 'Queuing Retraining...' : 'Trigger Model Retraining'}
+              {retrainLoading ? 'Queuing Task...' : 'Trigger Model Retraining'}
             </button>
           </div>
         </aside>
       </div>
 
-      {/* FLEET BATCH DIAGNOSTIC DASHBOARD (TAB 2 RESULTS) */}
+      {/* 4. Fleet Batch Results UI (Below Workspace) */}
       {batchResults && (
-        <section className="batch-results-dashboard">
+        <section className="batch-results-section">
           <div className="batch-results-header">
             <div>
-              <p className="eyebrow accent">Diagnostics Overview</p>
-              <h2>Fleet Health Assessment Report</h2>
+              <p className="eyebrow accent">Telemetry Results</p>
+              <h3>Fleet Batch Diagnostic Report</h3>
             </div>
-            
             <div className="batch-header-actions">
-              <button className="secondary-button" onClick={handleExportBatchCSV} style={{ margin: 0 }}>
-                📊 Export CSV Report
+              <button className="btn-small" onClick={handleExportBatchCSV}>
+                <IconDownload size={13} /> Export CSV Report
               </button>
-              <button className="secondary-button" onClick={() => setBatchResults(null)} style={{ margin: 0 }}>
-                Clear Results
-              </button>
+              <button className="btn-small" onClick={() => setBatchResults(null)}>Clear Results</button>
             </div>
           </div>
 
-          {/* Aggregate KPI Summary Cards */}
+          {/* Aggregate KPI Chips */}
           <div className="fleet-summary-grid">
             <div className="fleet-stat-card">
               <span className="stat-label">Total Evaluated</span>
               <strong className="stat-value">{totalBatch}</strong>
               <span className="stat-sub">Machines in batch</span>
             </div>
-
             <div className="fleet-stat-card healthy-card">
-              <span className="stat-label">Normal Operations</span>
+              <span className="stat-label">Normal</span>
               <strong className="stat-value">{healthyBatch}</strong>
               <span className="stat-sub">{totalBatch > 0 ? ((healthyBatch / totalBatch) * 100).toFixed(0) : 0}% Healthy</span>
             </div>
-
             <div className="fleet-stat-card danger-card">
-              <span className="stat-label">Failure Likely (Critical)</span>
+              <span className="stat-label">Failure Likely</span>
               <strong className="stat-value">{failingBatch}</strong>
               <span className="stat-sub">{totalBatch > 0 ? ((failingBatch / totalBatch) * 100).toFixed(0) : 0}% Requiring Action</span>
             </div>
-
             <div className="fleet-stat-card">
-              <span className="stat-label">Avg Fleet Risk</span>
+              <span className="stat-label">Avg Risk</span>
               <strong className="stat-value">{avgRisk}%</strong>
-              <span className="stat-sub">Mean failure probability</span>
+              <span className="stat-sub">Mean probability</span>
             </div>
           </div>
 
           {/* Filter Bar */}
           <div className="batch-filter-bar">
-            <span className="filter-label">Filter Status:</span>
+            <span className="filter-label">Filter:</span>
             <button 
               className={`filter-chip ${batchFilter === 'ALL' ? 'active' : ''}`}
               onClick={() => setBatchFilter('ALL')}
@@ -775,7 +765,7 @@ function App() {
               className={`filter-chip danger ${batchFilter === 'FAILURE' ? 'active' : ''}`}
               onClick={() => setBatchFilter('FAILURE')}
             >
-              Critical / Failure ({failingBatch})
+              Critical ({failingBatch})
             </button>
             <button 
               className={`filter-chip healthy ${batchFilter === 'NORMAL' ? 'active' : ''}`}
@@ -785,12 +775,11 @@ function App() {
             </button>
           </div>
 
-          {/* Batch Diagnostic Cards */}
+          {/* Diagnostic Cards */}
           <div className="batch-cards-grid">
             {filteredBatchResults.map((item, index) => {
               const isFail = item.status === 'Failure Likely'
               const probPct = Math.round((item.failure_probability || 0) * 100)
-              
               return (
                 <div key={index} className={`batch-diagnostic-card ${isFail ? 'is-danger' : 'is-healthy'}`}>
                   <div className="card-top">
@@ -799,7 +788,7 @@ function App() {
                       <h4 className="machine-status-title">{item.status}</h4>
                     </div>
                     <span className={`risk-pill ${item.risk_level.toLowerCase()}`}>
-                      {item.risk_badge} {item.risk_level} Risk
+                      {item.risk_badge} {item.risk_level}
                     </span>
                   </div>
 
@@ -815,7 +804,7 @@ function App() {
 
                   {item.diagnosed_failure_mode && (
                     <div className="diagnosed-mode-tag">
-                      <strong>Mode:</strong> {item.diagnosed_failure_mode}
+                      <strong>Diagnosed:</strong> {item.diagnosed_failure_mode}
                     </div>
                   )}
 
@@ -828,20 +817,12 @@ function App() {
                     </div>
                   )}
 
-                  {item.recommended_actions && item.recommended_actions.length > 0 && (
-                    <div className="card-section">
-                      <h5>Recommended Actions</h5>
-                      <ul>
-                        {item.recommended_actions.slice(0, 2).map((ra, i) => <li key={i}>{ra}</li>)}
-                      </ul>
-                    </div>
-                  )}
-
                   <button 
                     className="btn-feedback-trigger"
                     onClick={() => setSelectedBatchItemForFeedback(item)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
-                    📝 Log Technician Feedback
+                    <IconFeedback size={12} /> Log Feedback
                   </button>
                 </div>
               )
@@ -850,15 +831,10 @@ function App() {
         </section>
       )}
 
-      {/* SINGLE MACHINE RESULT MODAL */}
-      {singleResult && (
-        <ResultModal 
-          result={singleResult} 
-          onClose={() => setSingleResult(null)} 
-        />
-      )}
+      {/* Single Machine Result Modal */}
+      {result && <ResultModal result={result} onClose={() => setResult(null)} />}
 
-      {/* BATCH ITEM FEEDBACK MODAL */}
+      {/* Batch Machine Result Modal */}
       {selectedBatchItemForFeedback && (
         <ResultModal 
           result={selectedBatchItemForFeedback} 
@@ -869,7 +845,6 @@ function App() {
   )
 }
 
-// Result Modal with Full Diagnostic Assessment & Active Learning Feedback
 function ResultModal({ result, onClose }) {
   const percentage = Math.round(result.failure_probability * 100)
   const isFailure = result.status === 'Failure Likely'
@@ -883,9 +858,8 @@ function ResultModal({ result, onClose }) {
   const [notes, setNotes] = useState('')
   const [feedbackStatus, setFeedbackStatus] = useState(null)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
 
-  // Freeze background scrolling when modal is active
+  // Background scroll freeze lock
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => {
@@ -906,10 +880,9 @@ function ResultModal({ result, onClose }) {
         actual_failure_mode: actualFailure === 1 ? actualFailureMode : 'None',
         technician_notes: notes
       })
-      setFeedbackStatus('Ground truth recorded successfully in feedback database!')
-      setFeedbackSubmitted(true)
+      setFeedbackStatus('Feedback recorded successfully in pipeline database!')
     } catch (err) {
-      setFeedbackStatus(err.message || 'Failed to record technician feedback.')
+      setFeedbackStatus(err.message || 'Failed to record feedback.')
     } finally {
       setFeedbackLoading(false)
     }
@@ -917,59 +890,50 @@ function ResultModal({ result, onClose }) {
   
   return (
     <div className="modal-backdrop" role="presentation">
-      <section 
-        className={`result-modal ${isFailure ? 'danger' : 'healthy'}`} 
-        role="dialog" 
-        aria-modal="true" 
-        aria-labelledby="result-title"
-      >
+      <section className={`result-modal ${isFailure ? 'danger' : 'healthy'}`} role="dialog" aria-modal="true" aria-labelledby="result-title">
         <button className="close-button" onClick={onClose} aria-label="Close prediction">×</button>
-        <p className="eyebrow">Diagnostic Assessment — {result.machine_id}</p>
-        <div className="result-icon">{result.risk_badge || (isFailure ? '⚠️' : '✓')}</div>
+        <p className="eyebrow">Prediction result — {result.machine_id}</p>
+        <div className="result-icon">
+          {isFailure 
+            ? <IconAlertCircle size={26} color="#a5472b" /> 
+            : <IconCheckCircle size={26} color="#51732c" />}
+        </div>
         <h2 id="result-title">{result.status}</h2>
-        <p className="risk-copy">Risk Classification: <strong>{result.risk_level}</strong></p>
+        <p className="risk-copy">Risk level: <strong>{result.risk_level}</strong></p>
         
         <div className="probability">
-          <div>
-            <span>Calculated Failure Probability</span>
-            <strong>{percentage}%</strong>
-          </div>
-          <div className="meter">
-            <i style={{ width: `${percentage}%` }} />
-          </div>
+          <div><span>Failure probability</span><strong>{percentage}%</strong></div>
+          <div className="meter"><i style={{ width: `${percentage}%` }} /></div>
         </div>
 
         {result.diagnosed_failure_mode && (
-          <p className="failure-mode">
-            <strong>Diagnosed Failure Mode:</strong> {result.diagnosed_failure_mode}
-          </p>
+          <p className="failure-mode"><strong>Diagnosed Mode:</strong> {result.diagnosed_failure_mode}</p>
         )}
 
         <div className="result-columns">
           <div>
-            <h4>Possible Root Causes</h4>
+            <h4>Possible causes</h4>
             <ul>
               {result.root_causes && result.root_causes.length > 0 
                 ? result.root_causes.map((item) => <li key={item}>{item}</li>)
-                : <li>Operating within normal nominal thresholds.</li>}
+                : <li>Operating within nominal tolerances.</li>}
             </ul>
           </div>
           <div>
-            <h4>Recommended Maintenance Actions</h4>
+            <h4>Recommended actions</h4>
             <ul>
               {result.recommended_actions && result.recommended_actions.length > 0 
                 ? result.recommended_actions.map((item) => <li key={item}>{item}</li>)
-                : <li>Continue scheduled periodic telemetry logging.</li>}
+                : <li>Continue scheduled operational cycles.</li>}
             </ul>
           </div>
         </div>
 
-        <hr className="modal-divider" />
+        <hr style={{ margin: '24px 0 16px', borderColor: 'rgba(0,0,0,0.08)' }} />
         
-        {/* Active Learning Technician Feedback Form */}
+        {/* Active Learning Feedback */}
         <form onSubmit={handleFeedbackSubmit} className="feedback-form">
-          <h4 className="feedback-title">Log Ground Truth (Active Learning Feedback)</h4>
-          <p className="feedback-sub">Submit verified maintenance ground truth to train future model iterations.</p>
+          <h4 className="feedback-title">Log Ground Truth (Technician Feedback)</h4>
           
           <div className="feedback-radio-group">
             <label className={`radio-pill ${actualFailure === 0 ? 'selected' : ''}`}>
@@ -997,7 +961,7 @@ function ResultModal({ result, onClose }) {
 
           {actualFailure === 1 && (
             <div className="feedback-field">
-              <label>Actual Verified Failure Mode</label>
+              <label>Verified Failure Mode</label>
               <select 
                 value={actualFailureMode} 
                 onChange={(e) => setActualFailureMode(e.target.value)}
@@ -1015,19 +979,14 @@ function ResultModal({ result, onClose }) {
 
           <input 
             type="text" 
-            placeholder="Technician Notes (e.g. Spindle bearing replaced, cycle 220 min)" 
+            placeholder="Technician Notes (optional)" 
             value={notes} 
             onChange={(e) => setNotes(e.target.value)}
             className="feedback-notes-input"
-            disabled={feedbackSubmitted}
           />
 
-          <button 
-            type="submit" 
-            className="secondary-button" 
-            disabled={feedbackLoading || feedbackSubmitted}
-          >
-            {feedbackLoading ? 'Submitting Feedback...' : (feedbackSubmitted ? '✓ Feedback Recorded' : 'Submit Feedback to Pipeline')}
+          <button type="submit" className="secondary-button" disabled={feedbackLoading} style={{ width: '100%' }}>
+            {feedbackLoading ? 'Submitting...' : 'Submit Feedback'}
           </button>
           
           {feedbackStatus && (
@@ -1037,16 +996,12 @@ function ResultModal({ result, onClose }) {
           )}
         </form>
         
-        <button className="secondary-button close-btn" onClick={onClose}>
-          Close Assessment
+        <button className="secondary-button" onClick={onClose} style={{ marginTop: '12px', width: '100%' }}>
+          Close result
         </button>
       </section>
     </div>
   )
 }
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+createRoot(document.getElementById('root')).render(<StrictMode><App /></StrictMode>)

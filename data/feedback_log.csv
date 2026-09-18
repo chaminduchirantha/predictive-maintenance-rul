@@ -3,3 +3,4 @@ timestamp,machine_id,predicted_status,actual_failure,actual_failure_mode,technic
 2026-09-18T13:51:17.041998Z,CNC-CRIT-99,Failure Likely,1,Tool Wear Failure (TWF),Tool insert fractured during high-feed milling operation.
 2026-09-18T13:53:24.634333Z,CNC-CRIT-99,Failure Likely,1,Tool Wear Failure (TWF),Tool insert fractured during high-feed milling operation.
 2026-09-18T13:57:42.603196Z,CNC-CRIT-99,Failure Likely,1,Tool Wear Failure (TWF),Tool insert fractured during high-feed milling operation.
+2026-09-18T14:15:55.493934Z,CNC-CRIT-99,Failure Likely,1,Tool Wear Failure (TWF),Tool insert fractured during high-feed milling operation.
