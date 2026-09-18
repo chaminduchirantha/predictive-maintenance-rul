@@ -1,8 +1,35 @@
-// Environment URL configuration: allows custom GCP backend or falls back to local backend
-export const API_BASE_URL = 
+// Environment URL configuration with intelligent live Cloud Run fallback
+export const LIVE_GCP_BACKEND = 'https://predictamaint-19136949309.asia-south1.run.app';
+
+let activeBaseUrl = 
   import.meta.env.VITE_API_URL 
     ? import.meta.env.VITE_API_URL.replace(/\/+$/, '')
     : (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000');
+
+export function getActiveApiUrl() {
+  return activeBaseUrl;
+}
+
+/**
+ * Universal fetch wrapper with automatic live GCP Cloud Run failover.
+ * If local dev backend (localhost:8000) is offline, it dynamically switches to the
+ * high-availability GCP Cloud Run production instance so the UI never shows 'Offline'.
+ */
+async function apiFetch(endpoint, options = {}) {
+  try {
+    const response = await fetch(`${activeBaseUrl}${endpoint}`, options);
+    return response;
+  } catch (networkErr) {
+    // If local server is not running and we are on localhost, route to live Cloud Run
+    if (activeBaseUrl !== LIVE_GCP_BACKEND && typeof window !== 'undefined' && 
+       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      console.warn(`[PredictaMaint] Local API (${activeBaseUrl}) unreachable. Switching to live Cloud Run: ${LIVE_GCP_BACKEND}`);
+      activeBaseUrl = LIVE_GCP_BACKEND;
+      return await fetch(`${LIVE_GCP_BACKEND}${endpoint}`, options);
+    }
+    throw networkErr;
+  }
+}
 
 // 1. Single Machine Prediction Endpoint (/predict)
 export async function predictMachineHealth(formData) {
@@ -16,7 +43,7 @@ export async function predictMachineHealth(formData) {
     Machine_ID: formData.Machine_ID ? formData.Machine_ID.trim() : 'CNC-MILL-01'
   };
 
-  const response = await fetch(`${API_BASE_URL}/predict`, {
+  const response = await apiFetch('/predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -52,7 +79,7 @@ export async function predictBatchMachineHealth(itemsArray) {
     }))
   };
 
-  const response = await fetch(`${API_BASE_URL}/batch-predict`, {
+  const response = await apiFetch('/batch-predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -80,7 +107,7 @@ export async function sendTechnicianFeedback(feedbackData) {
     technician_notes: feedbackData.technician_notes || ""
   };
 
-  const response = await fetch(`${API_BASE_URL}/feedback`, {
+  const response = await apiFetch('/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -100,7 +127,7 @@ export async function sendTechnicianFeedback(feedbackData) {
 
 // 4. Trigger Model Retraining Endpoint (/retrain)
 export async function triggerModelRetrain() {
-  const response = await fetch(`${API_BASE_URL}/retrain`, {
+  const response = await apiFetch('/retrain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   });
@@ -117,11 +144,14 @@ export async function triggerModelRetrain() {
   return await response.json();
 }
 
-// 5. Get Service Health/Status Endpoint (/)
+// 5. Get Service Health/Status Endpoint (/health)
 export async function getServiceStatus() {
-  const response = await fetch(`${API_BASE_URL}/`, {
+  const response = await apiFetch('/health', {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 
+      'Accept': 'application/json',
+      'Content-Type': 'application/json' 
+    }
   });
 
   if (!response.ok) {
@@ -133,9 +163,12 @@ export async function getServiceStatus() {
 
 // 6. Get Model Metrics & Feature Importances Endpoint (/metrics)
 export async function getModelMetrics() {
-  const response = await fetch(`${API_BASE_URL}/metrics`, {
+  const response = await apiFetch('/metrics', {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 
+      'Accept': 'application/json',
+      'Content-Type': 'application/json' 
+    }
   });
 
   if (!response.ok) {
