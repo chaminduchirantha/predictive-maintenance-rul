@@ -1,27 +1,61 @@
-// Environment URL configuration
-export const API_BASE_URL = 'http://127.0.0.1:8000';
+// Environment URL configuration with intelligent live Cloud Run fallback
+export const LIVE_GCP_BACKEND = 'https://predictamaint-19136949309.asia-south1.run.app';
+
+let activeBaseUrl = 
+  import.meta.env.VITE_API_URL 
+    ? import.meta.env.VITE_API_URL.replace(/\/+$/, '')
+    : (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000');
+
+export function getActiveApiUrl() {
+  return activeBaseUrl;
+}
+
+/**
+ * Universal fetch wrapper with automatic live GCP Cloud Run failover.
+ * If local dev backend (localhost:8000) is offline, it dynamically switches to the
+ * high-availability GCP Cloud Run production instance so the UI never shows 'Offline'.
+ */
+async function apiFetch(endpoint, options = {}) {
+  try {
+    const response = await fetch(`${activeBaseUrl}${endpoint}`, options);
+    return response;
+  } catch (networkErr) {
+    // If local server is not running and we are on localhost, route to live Cloud Run
+    if (activeBaseUrl !== LIVE_GCP_BACKEND && typeof window !== 'undefined' && 
+       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      console.warn(`[PredictaMaint] Local API (${activeBaseUrl}) unreachable. Switching to live Cloud Run: ${LIVE_GCP_BACKEND}`);
+      activeBaseUrl = LIVE_GCP_BACKEND;
+      return await fetch(`${LIVE_GCP_BACKEND}${endpoint}`, options);
+    }
+    throw networkErr;
+  }
+}
 
 // 1. Single Machine Prediction Endpoint (/predict)
 export async function predictMachineHealth(formData) {
   const payload = {
-    Type: formData.Type,
+    Type: (formData.Type || 'M').trim().toUpperCase(),
     Air_temperature_K: parseFloat(formData.Air_temperature_K),
     Process_temperature_K: parseFloat(formData.Process_temperature_K),
     Rotational_speed_rpm: parseFloat(formData.Rotational_speed_rpm),
     Torque_Nm: parseFloat(formData.Torque_Nm),
     Tool_wear_min: parseFloat(formData.Tool_wear_min),
-    Machine_ID: formData.Machine_ID || 'CNC-MILL-01'
+    Machine_ID: formData.Machine_ID ? formData.Machine_ID.trim() : 'CNC-MILL-01'
   };
 
-  const response = await fetch(`${API_BASE_URL}/predict`, {
+  const response = await apiFetch('/predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail?.[0]?.msg || 'Single prediction failed.');
+    let errorMsg = 'Single prediction failed.';
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.detail?.[0]?.msg || errorData.detail || errorMsg;
+    } catch (_) {}
+    throw new Error(errorMsg);
   }
 
   return await response.json();
@@ -29,27 +63,35 @@ export async function predictMachineHealth(formData) {
 
 // 2. Batch Machine Prediction Endpoint (/batch-predict)
 export async function predictBatchMachineHealth(itemsArray) {
+  if (!itemsArray || itemsArray.length === 0) {
+    throw new Error('Batch list cannot be empty. Please provide at least one machine telemetry record.');
+  }
+
   const payload = {
-    items: itemsArray.map(item => ({
-      Type: item.Type,
+    items: itemsArray.map((item, idx) => ({
+      Type: (item.Type || 'M').trim().toUpperCase(),
       Air_temperature_K: parseFloat(item.Air_temperature_K),
       Process_temperature_K: parseFloat(item.Process_temperature_K),
       Rotational_speed_rpm: parseFloat(item.Rotational_speed_rpm),
       Torque_Nm: parseFloat(item.Torque_Nm),
       Tool_wear_min: parseFloat(item.Tool_wear_min),
-      Machine_ID: item.Machine_ID || 'CNC-MILL-01'
+      Machine_ID: (item.Machine_ID || `CNC-MCH-${String(idx + 1).padStart(2, '0')}`).trim()
     }))
   };
 
-  const response = await fetch(`${API_BASE_URL}/batch-predict`, {
+  const response = await apiFetch('/batch-predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || 'Batch prediction failed.');
+    let errorMsg = 'Batch prediction failed.';
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.detail || errorMsg;
+    } catch (_) {}
+    throw new Error(errorMsg);
   }
 
   return await response.json();
@@ -65,15 +107,19 @@ export async function sendTechnicianFeedback(feedbackData) {
     technician_notes: feedbackData.technician_notes || ""
   };
 
-  const response = await fetch(`${API_BASE_URL}/feedback`, {
+  const response = await apiFetch('/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || 'Submitting feedback failed.');
+    let errorMsg = 'Submitting feedback failed.';
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.detail || errorMsg;
+    } catch (_) {}
+    throw new Error(errorMsg);
   }
 
   return await response.json();
@@ -81,28 +127,31 @@ export async function sendTechnicianFeedback(feedbackData) {
 
 // 4. Trigger Model Retraining Endpoint (/retrain)
 export async function triggerModelRetrain() {
-  const response = await fetch(`${API_BASE_URL}/retrain`, {
+  const response = await apiFetch('/retrain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || 'Triggering retraining failed.');
+    let errorMsg = 'Triggering retraining failed.';
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.detail || errorMsg;
+    } catch (_) {}
+    throw new Error(errorMsg);
   }
 
   return await response.json();
-
-  
 }
 
-// Add these functions to your api.js file
-
-// 5. Get Service Health/Status Endpoint (/health or /status)
+// 5. Get Service Health/Status Endpoint (/health)
 export async function getServiceStatus() {
-  const response = await fetch(`${API_BASE_URL}/`, {
+  const response = await apiFetch('/health', {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 
+      'Accept': 'application/json',
+      'Content-Type': 'application/json' 
+    }
   });
 
   if (!response.ok) {
@@ -114,9 +163,12 @@ export async function getServiceStatus() {
 
 // 6. Get Model Metrics & Feature Importances Endpoint (/metrics)
 export async function getModelMetrics() {
-  const response = await fetch(`${API_BASE_URL}/metrics`, {
+  const response = await apiFetch('/metrics', {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 
+      'Accept': 'application/json',
+      'Content-Type': 'application/json' 
+    }
   });
 
   if (!response.ok) {

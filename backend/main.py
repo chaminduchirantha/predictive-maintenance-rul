@@ -8,7 +8,9 @@ import sys
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, status, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -44,8 +46,14 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
 )
+
+# Mount static frontend assets if built
+FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend", "dist")
+if os.path.exists(FRONTEND_DIST):
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 # Global State Container for Model Artifacts
 state: Dict[str, Any] = {
@@ -222,8 +230,13 @@ def execute_inference(item: SensorInput) -> PredictionResponse:
 # ==============================================================================
 
 @app.get("/", tags=["System"])
-def root():
+@app.get("/health", tags=["System"])
+def root(request: Request):
     """Health check endpoint providing API metadata and active model status."""
+    accept_header = request.headers.get("accept", "")
+    index_html = os.path.join(FRONTEND_DIST, "index.html")
+    if "text/html" in accept_header and os.path.exists(index_html) and request.url.path == "/":
+        return FileResponse(index_html)
     return {
         "service": "PredictaMaint Predictive Maintenance REST API",
         "status": "operational",
@@ -233,6 +246,15 @@ def root():
         "loaded_at": state["loaded_at"],
         "docs_url": "/docs"
     }
+
+
+@app.get("/app", include_in_schema=False)
+def serve_ui():
+    """Serves the single-page application UI."""
+    index_html = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(index_html):
+        return FileResponse(index_html)
+    raise HTTPException(status_code=404, detail="Frontend build not found.")
 
 
 @app.post("/predict", response_model=PredictionResponse, tags=["Inference"])

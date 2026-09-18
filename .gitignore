@@ -48,9 +48,17 @@ venv.bak/
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
 
-# Environment variables
+# Environment variables & Secrets
 .env
-.env.local
+.env.*
+*.pem
+*.key
+*.p12
+*service_account*.json
+*service-account*.json
+credentials.json
+client_secret*.json
+.gcp/
 
 # Operating System Files
 .DS_Store
